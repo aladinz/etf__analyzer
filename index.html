@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ETF Research Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- ─── Header ─────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <span class="logo-icon">◈</span>
+        <span class="logo-text">ETF<strong>Lens</strong></span>
+      </div>
+      <form class="search-bar" id="searchForm" autocomplete="off">
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            id="tickerInput"
+            class="search-input"
+            placeholder="Enter ETF ticker  (e.g. QQQ, SPY, SCHD)"
+            maxlength="10"
+            spellcheck="false"
+          />
+          <button type="submit" class="search-btn">Analyze</button>
+        </div>
+        <div class="search-chips" id="searchChips">
+          <label class="chip chip-load" title="Load a .txt file with one ticker per line">
+            📂 Load Watchlist
+            <input type="file" id="watchlistFileInput" accept=".txt,.csv" />
+          </label>
+          <span class="chip chip-divider"></span>
+          <span class="chip" data-ticker="SPY">SPY</span>
+          <span class="chip" data-ticker="QQQ">QQQ</span>
+          <span class="chip" data-ticker="VOO">VOO</span>
+          <span class="chip" data-ticker="VTI">VTI</span>
+          <span class="chip" data-ticker="VXUS">VXUS</span>
+          <span class="chip" data-ticker="BND">BND</span>
+          <span class="chip" data-ticker="BNDW">BNDW</span>
+          <span class="chip" data-ticker="AGG">AGG</span>
+          <span class="chip" data-ticker="IVV">IVV</span>
+          <span class="chip" data-ticker="IEFA">IEFA</span>
+          <span class="chip" data-ticker="SCHD">SCHD</span>
+          <span class="chip" data-ticker="ARKK">ARKK</span>
+          <span class="chip" data-ticker="GLD">GLD</span>
+        </div>
+      </form>
+    </div>
+  </header>
+
+  <!-- ─── Hero / Empty State ──────────────────────────────────────── -->
+  <main id="mainContent">
+    <section class="hero" id="heroSection">
+      <div class="hero-glow"></div>
+      <div class="hero-body">
+        <h1 class="hero-title">Institutional-grade<br/>ETF Research</h1>
+        <p class="hero-sub">Enter a ticker above to get a full breakdown — holdings, sectors, costs, performance, risks, and portfolio fit.</p>
+        <div class="hero-features">
+          <div class="hf-item"><span class="hf-dot dot-blue"></span>Top Holdings</div>
+          <div class="hf-item"><span class="hf-dot dot-purple"></span>Sector Allocation</div>
+          <div class="hf-item"><span class="hf-dot dot-teal"></span>Fund Metrics</div>
+          <div class="hf-item"><span class="hf-dot dot-amber"></span>Performance</div>
+          <div class="hf-item"><span class="hf-dot dot-rose"></span>Risk Profile</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── Dashboard (hidden until ticker loaded) ──────────────── -->
+    <div class="dashboard hidden" id="dashboard">
+
+      <!-- Ticker banner -->
+      <section class="ticker-banner" id="tickerBanner"></section>
+
+      <!-- Overview -->
+      <section class="section" id="sectionOverview">
+        <div class="section-header">
+          <h2 class="section-title">Overview</h2>
+          <span class="badge" id="badgeCategory"></span>
+        </div>
+        <div class="overview-grid">
+          <div class="overview-desc card" id="overviewDesc"></div>
+          <div class="stat-tiles" id="statTiles"></div>
+        </div>
+      </section>
+
+      <!-- Holdings -->
+      <section class="section" id="sectionHoldings">
+        <div class="section-header">
+          <h2 class="section-title">Top Holdings</h2>
+          <span class="section-meta" id="holdingsMeta"></span>
+        </div>
+        <div class="holdings-grid">
+          <div class="card holdings-table-wrap">
+            <table class="holdings-table" id="holdingsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Ticker</th>
+                  <th>Company</th>
+                  <th class="align-right">Weight</th>
+                  <th class="align-right">Weight Bar</th>
+                </tr>
+              </thead>
+              <tbody id="holdingsBody"></tbody>
+            </table>
+          </div>
+          <div class="card holdings-aside" id="holdingsAside"></div>
+        </div>
+      </section>
+
+      <!-- Sector Exposure -->
+      <section class="section" id="sectionSectors">
+        <div class="section-header">
+          <h2 class="section-title">Sector Exposure</h2>
+        </div>
+        <div class="sector-grid">
+          <div class="card sector-chart-wrap">
+            <canvas id="sectorChart" width="340" height="340"></canvas>
+          </div>
+          <div class="sector-bars-wrap" id="sectorBars"></div>
+        </div>
+      </section>
+
+      <!-- Costs -->
+      <section class="section" id="sectionCosts">
+        <div class="section-header">
+          <h2 class="section-title">Costs &amp; Fund Characteristics</h2>
+        </div>
+        <div class="metrics-grid" id="metricsGrid"></div>
+      </section>
+
+      <!-- Performance -->
+      <section class="section" id="sectionPerformance">
+        <div class="section-header">
+          <h2 class="section-title">Historical Performance</h2>
+        </div>
+        <div class="perf-grid">
+          <div class="card perf-chart-wrap">
+            <canvas id="perfChart" width="700" height="280"></canvas>
+          </div>
+          <div class="perf-table-wrap card" id="perfTable"></div>
+        </div>
+        <div class="card perf-notes" id="perfNotes"></div>
+      </section>
+
+      <!-- Risks -->
+      <section class="section" id="sectionRisks">
+        <div class="section-header">
+          <h2 class="section-title">Risk Profile</h2>
+        </div>
+        <div class="risk-grid" id="riskGrid"></div>
+      </section>
+
+      <!-- Use Cases -->
+      <section class="section" id="sectionUseCases">
+        <div class="section-header">
+          <h2 class="section-title">Best Portfolio Use Cases</h2>
+        </div>
+        <div class="usecase-grid" id="useCaseGrid"></div>
+      </section>
+
+      <!-- Bottom Line -->
+      <section class="section" id="sectionBottom">
+        <div class="card bottom-line-card" id="bottomLine"></div>
+      </section>
+
+    </div><!-- /dashboard -->
+
+    <!-- Loading overlay -->
+    <div class="loader-overlay hidden" id="loaderOverlay">
+      <div class="loader-box">
+        <div class="spinner"></div>
+        <p class="loader-text" id="loaderText">Fetching data…</p>
+      </div>
+    </div>
+
+    <!-- Not-found message -->
+    <div class="not-found hidden" id="notFound">
+      <div class="nf-inner">
+        <span class="nf-icon">⚠</span>
+        <h3 id="nfTitle">Ticker not found</h3>
+        <p id="nfMsg">No data available for this ticker in the sample dataset.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="site-footer">
+    <p>ETFLens — educational tool. Data is illustrative only. Not financial advice.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
