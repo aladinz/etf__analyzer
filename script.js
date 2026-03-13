@@ -1862,3 +1862,675 @@ document.addEventListener('DOMContentLoaded', () => {
 
   attachFileInputListener();
 });
+
+/* ══════════════════════════════════════════════════════════════════
+   FEATURE 1 – ETF COMPARISON MODE
+   ══════════════════════════════════════════════════════════════════ */
+
+(function initCompare() {
+
+  const compareToggleBtn = document.getElementById('compareToggleBtn');
+  const comparePanel     = document.getElementById('comparePanel');
+  const compareClose     = document.getElementById('compareClose');
+  const compareRunBtn    = document.getElementById('compareRunBtn');
+  const compareDashboard = document.getElementById('compareDashboard');
+  const dashboard        = document.getElementById('dashboard');
+  const heroSection      = document.getElementById('heroSection');
+  const notFound         = document.getElementById('notFound');
+
+  let compareActive = false;
+
+  function openComparePanel() {
+    comparePanel.classList.remove('hidden');
+    compareToggleBtn.classList.add('active');
+    compareActive = true;
+  }
+
+  function closeComparePanel() {
+    comparePanel.classList.add('hidden');
+    compareToggleBtn.classList.remove('active');
+    compareActive = false;
+  }
+
+  compareToggleBtn.addEventListener('click', () => {
+    if (compareActive) closeComparePanel();
+    else openComparePanel();
+  });
+
+  compareClose.addEventListener('click', closeComparePanel);
+
+  /* Auto-uppercase compare inputs */
+  document.querySelectorAll('.cmp-input').forEach(inp => {
+    inp.addEventListener('input', e => {
+      const cur = e.target.value;
+      const up  = cur.toUpperCase();
+      if (cur !== up) { const p = e.target.selectionStart; e.target.value = up; e.target.setSelectionRange(p, p); }
+    });
+  });
+
+  compareRunBtn.addEventListener('click', runComparison);
+
+  function runComparison() {
+    const inputs  = document.querySelectorAll('.cmp-input');
+    const tickers = Array.from(inputs)
+      .map(i => i.value.trim().toUpperCase())
+      .filter(t => t.length > 0);
+
+    if (tickers.length < 2) {
+      alert('Please enter at least 2 tickers to compare.');
+      return;
+    }
+
+    const datasets = tickers.map(t => ETF_DATABASE[t]).filter(Boolean);
+
+    if (datasets.length < 2) {
+      alert('At least 2 of the entered tickers must exist in the database.\n\nAvailable: ' + Object.keys(ETF_DATABASE).join(', '));
+      return;
+    }
+
+    renderCompareDashboard(datasets);
+
+    // Hide single-ticker views, show compare
+    heroSection.classList.add('hidden');
+    dashboard.classList.add('hidden');
+    notFound.classList.add('hidden');
+    document.getElementById('portfolioDashboard').classList.add('hidden');
+    compareDashboard.classList.remove('hidden');
+
+    closeComparePanel();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function renderCompareDashboard(datasets) {
+    const n = datasets.length;
+    const colStyle = `grid-template-columns: 180px repeat(${n}, 1fr)`;
+    const colStyleNoLabel = `grid-template-columns: repeat(${n}, 1fr)`;
+
+    let html = `
+      <div class="cmp-back-row">
+        <button class="cmp-back-btn" id="cmpBackBtn">← Back</button>
+        <span class="cmp-tickers-badge">${datasets.map(d => d.ticker).join(' vs ')}</span>
+      </div>
+    `;
+
+    /* ── Column headers ── */
+    html += `<div class="cmp-section">`;
+    html += `<div class="cmp-columns" style="${colStyleNoLabel}">`;
+    datasets.forEach(d => {
+      html += `
+        <div class="cmp-col-header">
+          <div class="cmp-col-ticker">${d.ticker}</div>
+          <div class="cmp-col-name">${d.name}</div>
+          <div class="cmp-price">$${d.price.toFixed(2)}
+            <span style="font-size:12px;margin-left:6px;" class="${d.changePositive ? 'td-return pos' : 'td-return neg'}">${d.change}</span>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div></div>`;
+
+    /* ── Key Metrics ── */
+    const metrics = [
+      { label: 'Category',     fn: d => d.category,      win: null },
+      { label: 'AUM',          fn: d => d.overview.find(o => o.label === 'AUM')?.value || '-', win: null },
+      { label: 'Expense Ratio',fn: d => { const v = d.overview.find(o => o.label === 'Expense Ratio')?.value || '-'; return v; },
+        winFn: d => { const v = d.overview.find(o => o.label === 'Expense Ratio')?.value || '-'; return parseFloat(v) || 999; },
+        winType: 'min' },
+      { label: 'Holdings',     fn: d => d.holdings.concentration.totalPositions.toLocaleString(), win: null },
+      { label: 'Top-10 Weight', fn: d => d.holdings.concentration.top10pct,
+        winFn: d => parseFloat(d.holdings.concentration.top10pct) || 999, winType: 'min' },
+      { label: 'Inception',    fn: d => String(d.inceptionYear), win: null },
+    ];
+
+    html += `<div class="cmp-section"><div class="cmp-section-title">Key Metrics</div>`;
+    html += `<div class="cmp-metric-grid">`;
+
+    metrics.forEach(m => {
+      let winnerIdx = -1;
+      if (m.winFn && m.winType) {
+        const vals = datasets.map(m.winFn);
+        const best = m.winType === 'min' ? Math.min(...vals) : Math.max(...vals);
+        winnerIdx = vals.indexOf(best);
+      }
+      html += `<div class="cmp-metric-row" style="${colStyle}">`;
+      html += `<div class="cmp-metric-label-col">${m.label}</div>`;
+      datasets.forEach((d, i) => {
+        const isWinner = (winnerIdx === i);
+        html += `<div class="cmp-metric-val-col${isWinner ? ' winner' : ''}">${m.fn(d)}${isWinner ? ' ✓' : ''}</div>`;
+      });
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+
+    /* ── Sector Exposure ── */
+    html += `<div class="cmp-section"><div class="cmp-section-title">Sector Exposure</div>`;
+    html += `<div class="cmp-columns" style="${colStyleNoLabel}">`;
+    datasets.forEach(d => {
+      const total = d.sectors.reduce((s, x) => s + x.pct, 0);
+      let sectHtml = `<div class="card cmp-sector-bars">`;
+      d.sectors.forEach(s => {
+        const w = ((s.pct / total) * 100).toFixed(1);
+        sectHtml += `
+          <div class="cmp-sb-row">
+            <div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px;">${s.name}</div>
+            <div class="cmp-sb-pct">${s.pct.toFixed(1)}%</div>
+          </div>
+          <div class="cmp-sb-track" style="margin-bottom:6px;">
+            <div class="cmp-sb-fill" style="width:${w}%;background:${s.color}"></div>
+          </div>`;
+      });
+      sectHtml += `</div>`;
+      html += sectHtml;
+    });
+    html += `</div></div>`;
+
+    /* ── Performance ── */
+    // Gather all periods present in any dataset
+    const allPeriods = [];
+    datasets.forEach(d => d.performance.periods.forEach(p => { if (!allPeriods.includes(p.period)) allPeriods.push(p.period); }));
+
+    html += `<div class="cmp-section"><div class="cmp-section-title">Historical Performance</div>`;
+    html += `<div class="cmp-columns" style="${colStyleNoLabel}">`;
+    datasets.forEach(d => {
+      const perfMap = {};
+      d.performance.periods.forEach(p => { perfMap[p.period] = p.etf; });
+      html += `<div class="card" style="padding:0;overflow:hidden;">`;
+      html += `<table class="cmp-perf-table"><thead><tr><th>Period</th><th>${d.ticker}</th></tr></thead><tbody>`;
+      allPeriods.forEach(period => {
+        const v = perfMap[period];
+        if (v === undefined) return;
+        const cls = v >= 0 ? 'p-pos' : 'p-neg';
+        html += `<tr><td>${period}</td><td class="${cls}">${v >= 0 ? '+' : ''}${v.toFixed(1)}%</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+    });
+
+    // Highlight best performer per period
+    // (We do this via a second pass with DOM after insertion)
+    html += `</div></div>`;
+
+    /* ── Risks ── */
+    html += `<div class="cmp-section"><div class="cmp-section-title">Risk Profile</div>`;
+    html += `<div class="cmp-columns" style="${colStyleNoLabel}">`;
+    datasets.forEach(d => {
+      html += `<div class="card">`;
+      d.risks.forEach(r => {
+        html += `
+          <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span>${r.icon}</span>
+              <span style="font-size:13px;font-weight:700;color:var(--text-primary);">${r.title}</span>
+              <span class="rc-level level-${r.level}" style="margin-left:auto;">${r.level.toUpperCase()}</span>
+            </div>
+            <p style="font-size:12px;color:var(--text-secondary);line-height:1.6;">${r.body}</p>
+          </div>`;
+      });
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+
+    /* ── Bottom Line ── */
+    html += `<div class="cmp-section"><div class="cmp-section-title">Bottom Line</div>`;
+    html += `<div class="cmp-columns" style="${colStyleNoLabel}">`;
+    datasets.forEach(d => {
+      html += `<div class="card">`;
+      d.bottomLine.forEach(b => {
+        html += `
+          <div style="display:flex;gap:10px;align-items:flex-start;margin-bottom:10px;">
+            <span class="bl-dot ${b.type}" style="flex-shrink:0;">${b.type === 'strength' ? '✓' : b.type === 'weakness' ? '✗' : '●'}</span>
+            <span style="font-size:13px;color:var(--text-secondary);line-height:1.6;">${b.text}</span>
+          </div>`;
+      });
+      html += `</div>`;
+    });
+    html += `</div></div>`;
+
+    compareDashboard.innerHTML = html;
+
+    /* Highlight best performance per period */
+    highlightBestPerformance(datasets, allPeriods);
+
+    document.getElementById('cmpBackBtn').addEventListener('click', () => {
+      compareDashboard.classList.add('hidden');
+      heroSection.classList.remove('hidden');
+    });
+  }
+
+  function highlightBestPerformance(datasets, periods) {
+    // Build a per-ETF lookup
+    const maps = datasets.map(d => {
+      const m = {};
+      d.performance.periods.forEach(p => { m[p.period] = p.etf; });
+      return m;
+    });
+
+    // For each period, find max etf return
+    periods.forEach(period => {
+      const vals = maps.map(m => m[period] !== undefined ? m[period] : -Infinity);
+      const maxVal = Math.max(...vals);
+      const winnerColIdx = vals.indexOf(maxVal);
+
+      // Find all cmp-perf-table cells matching this period in winner column
+      const tables = compareDashboard.querySelectorAll('.cmp-perf-table');
+      const tbl = tables[winnerColIdx];
+      if (!tbl) return;
+      tbl.querySelectorAll('tbody tr').forEach(row => {
+        if (row.cells[0] && row.cells[0].textContent.trim() === period && row.cells[1]) {
+          row.cells[1].classList.add('winner-cell');
+        }
+      });
+    });
+  }
+
+}());
+
+/* ══════════════════════════════════════════════════════════════════
+   FEATURE 2 – PORTFOLIO BUILDER
+   ══════════════════════════════════════════════════════════════════ */
+
+(function initPortfolio() {
+
+  const portfolioToggleBtn = document.getElementById('portfolioToggleBtn');
+  const portfolioPanel     = document.getElementById('portfolioPanel');
+  const portfolioClose     = document.getElementById('portfolioClose');
+  const portfolioRows      = document.getElementById('portfolioRows');
+  const portAddRow         = document.getElementById('portAddRow');
+  const portAnalyzeBtn     = document.getElementById('portAnalyzeBtn');
+  const portWeightStatus   = document.getElementById('portWeightStatus');
+  const portfolioDashboard = document.getElementById('portfolioDashboard');
+  const heroSection        = document.getElementById('heroSection');
+  const dashboard          = document.getElementById('dashboard');
+  const notFound           = document.getElementById('notFound');
+  const compareDashboard   = document.getElementById('compareDashboard');
+
+  let panelOpen = false;
+
+  /* ── Restore saved portfolio from localStorage ── */
+  function loadSaved() {
+    try {
+      const raw = localStorage.getItem('etflens_portfolio');
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return null;
+  }
+
+  function saveCurrent() {
+    const rows = getPortfolioRows();
+    try { localStorage.setItem('etflens_portfolio', JSON.stringify(rows)); } catch (_) {}
+  }
+
+  function getPortfolioRows() {
+    return Array.from(portfolioRows.querySelectorAll('.port-row')).map(row => ({
+      ticker: row.querySelector('.port-ticker-input').value.trim().toUpperCase(),
+      weight: parseFloat(row.querySelector('.port-weight-input').value) || 0,
+    }));
+  }
+
+  function openPanel() {
+    portfolioPanel.classList.remove('hidden');
+    portfolioToggleBtn.classList.add('active');
+    panelOpen = true;
+    // Populate with saved if rows are empty
+    if (portfolioRows.children.length === 0) {
+      const saved = loadSaved();
+      if (saved && saved.length) {
+        saved.forEach(r => addRow(r.ticker, r.weight));
+      } else {
+        addRow('SPY', 60);
+        addRow('BND', 40);
+      }
+      updateWeightStatus();
+    }
+  }
+
+  function closePanel() {
+    portfolioPanel.classList.add('hidden');
+    portfolioToggleBtn.classList.remove('active');
+    panelOpen = false;
+  }
+
+  portfolioToggleBtn.addEventListener('click', () => { if (panelOpen) closePanel(); else openPanel(); });
+  portfolioClose.addEventListener('click', closePanel);
+  portAddRow.addEventListener('click', () => { addRow('', 0); updateWeightStatus(); });
+  portAnalyzeBtn.addEventListener('click', runPortfolioAnalysis);
+
+  function addRow(ticker, weight) {
+    const row = document.createElement('div');
+    row.className = 'port-row';
+    row.innerHTML = `
+      <input type="text" class="port-ticker-input" placeholder="Ticker" maxlength="10" value="${ticker}" spellcheck="false" />
+      <input type="number" class="port-weight-input" placeholder="0" min="0" max="100" step="1" value="${weight || ''}" />
+      <span class="port-pct-label">%</span>
+      <span class="port-status-tag"></span>
+      <button class="port-remove-btn" title="Remove">✕</button>
+    `;
+
+    const tickerInput  = row.querySelector('.port-ticker-input');
+    const weightInput  = row.querySelector('.port-weight-input');
+    const statusTag    = row.querySelector('.port-status-tag');
+    const removeBtn    = row.querySelector('.port-remove-btn');
+
+    function updateStatus() {
+      const t = tickerInput.value.trim().toUpperCase();
+      if (!t) { statusTag.textContent = ''; statusTag.className = 'port-status-tag'; return; }
+      if (ETF_DATABASE[t]) {
+        statusTag.textContent = '✓ ' + ETF_DATABASE[t].name.split(' ').slice(0, 4).join(' ');
+        statusTag.className = 'port-status-tag known';
+      } else {
+        statusTag.textContent = '? Not in DB';
+        statusTag.className = 'port-status-tag unknown';
+      }
+    }
+
+    tickerInput.addEventListener('input', e => {
+      const cur = e.target.value; const up = cur.toUpperCase();
+      if (cur !== up) { const p = e.target.selectionStart; e.target.value = up; e.target.setSelectionRange(p, p); }
+      updateStatus();
+      saveCurrent();
+    });
+
+    weightInput.addEventListener('input', () => { updateWeightStatus(); saveCurrent(); });
+    removeBtn.addEventListener('click', () => { row.remove(); updateWeightStatus(); saveCurrent(); });
+
+    if (ticker) updateStatus();
+    portfolioRows.appendChild(row);
+  }
+
+  function updateWeightStatus() {
+    const total = Array.from(portfolioRows.querySelectorAll('.port-weight-input'))
+      .reduce((s, i) => s + (parseFloat(i.value) || 0), 0);
+    portWeightStatus.textContent = `Total: ${total.toFixed(1)}%`;
+    if (Math.abs(total - 100) < 0.01) {
+      portWeightStatus.className = 'port-weight-status ok';
+    } else if (total > 100) {
+      portWeightStatus.className = 'port-weight-status over';
+    } else {
+      portWeightStatus.className = 'port-weight-status';
+    }
+  }
+
+  function runPortfolioAnalysis() {
+    const rows = getPortfolioRows().filter(r => r.ticker);
+    if (rows.length < 2) { alert('Please add at least 2 ETFs to the portfolio.'); return; }
+
+    const total = rows.reduce((s, r) => s + r.weight, 0);
+    if (Math.abs(total - 100) > 0.5) {
+      alert(`Weights sum to ${total.toFixed(1)}%. They must total 100%.`); return;
+    }
+
+    const known = rows.filter(r => ETF_DATABASE[r.ticker]);
+    if (known.length < 2) { alert('At least 2 tickers must exist in the database.'); return; }
+
+    // Normalise weights to exactly 100 across known
+    const knownTotal = known.reduce((s, r) => s + r.weight, 0);
+    const alloc = known.map(r => ({ ...r, w: r.weight / knownTotal }));
+
+    renderPortfolioDashboard(alloc);
+
+    heroSection.classList.add('hidden');
+    dashboard.classList.add('hidden');
+    notFound.classList.add('hidden');
+    compareDashboard.classList.add('hidden');
+    portfolioDashboard.classList.remove('hidden');
+
+    closePanel();
+    saveCurrent();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function renderPortfolioDashboard(alloc) {
+    // ── Weighted average expense ratio ──
+    const weightedER = alloc.reduce((s, a) => {
+      const d = ETF_DATABASE[a.ticker];
+      const erStr = d.overview.find(o => o.label === 'Expense Ratio')?.value || '0';
+      const er = parseFloat(erStr) || 0;
+      return s + er * a.w;
+    }, 0);
+
+    // ── Blended sector exposure ──
+    const sectorMap = {};
+    const sectorColors = {};
+    alloc.forEach(a => {
+      const d = ETF_DATABASE[a.ticker];
+      d.sectors.forEach(s => {
+        sectorMap[s.name] = (sectorMap[s.name] || 0) + s.pct * a.w;
+        if (!sectorColors[s.name]) sectorColors[s.name] = s.color;
+      });
+    });
+    const blendedSectors = Object.entries(sectorMap)
+      .map(([name, pct]) => ({ name, pct, color: sectorColors[name] }))
+      .sort((a, b) => b.pct - a.pct);
+
+    // ── Blended performance ──
+    const perfPeriods = {};
+    alloc.forEach(a => {
+      const d = ETF_DATABASE[a.ticker];
+      d.performance.periods.forEach(p => {
+        if (!perfPeriods[p.period]) perfPeriods[p.period] = 0;
+        perfPeriods[p.period] += p.etf * a.w;
+      });
+    });
+    const blendedPerf = Object.entries(perfPeriods)
+      .map(([period, ret]) => ({ period, ret }));
+
+    // ── Overlap holdings ──
+    const holdingMap = {};
+    alloc.forEach(a => {
+      const d = ETF_DATABASE[a.ticker];
+      d.holdings.items.forEach(h => {
+        if (!holdingMap[h.ticker]) holdingMap[h.ticker] = { ticker: h.ticker, name: h.name, etfs: [], totalW: 0 };
+        holdingMap[h.ticker].etfs.push(a.ticker);
+        holdingMap[h.ticker].totalW += h.weight * a.w;
+      });
+    });
+    const overlapHoldings = Object.values(holdingMap)
+      .filter(h => h.etfs.length > 1)
+      .sort((a, b) => b.totalW - a.totalW)
+      .slice(0, 10);
+
+    // ── Build HTML ──
+    let html = `
+      <div class="port-back-row">
+        <button class="port-back-btn" id="portBackBtn">← Back</button>
+        <span class="port-banner-badge">Portfolio: ${alloc.map(a => `${a.ticker} ${(a.w * 100).toFixed(0)}%`).join(' · ')}</span>
+      </div>
+
+      <!-- Summary tiles -->
+      <div class="port-summary-tiles">
+        <div class="pst-tile">
+          <div class="pst-label">Weighted Avg Expense Ratio</div>
+          <div class="pst-value" style="color:var(--accent-teal)">${weightedER.toFixed(4)}%</div>
+          <div class="pst-sub">Blended cost of holding</div>
+        </div>
+        <div class="pst-tile">
+          <div class="pst-label">ETFs in Portfolio</div>
+          <div class="pst-value" style="color:var(--accent-blue)">${alloc.length}</div>
+          <div class="pst-sub">${alloc.map(a => a.ticker).join(' + ')}</div>
+        </div>
+        <div class="pst-tile">
+          <div class="pst-label">Top Sector</div>
+          <div class="pst-value" style="color:var(--accent-purple)">${blendedSectors[0]?.pct.toFixed(1)}%</div>
+          <div class="pst-sub">${blendedSectors[0]?.name}</div>
+        </div>
+        <div class="pst-tile">
+          <div class="pst-label">Shared Holdings</div>
+          <div class="pst-value" style="color:var(--accent-amber)">${overlapHoldings.length}</div>
+          <div class="pst-sub">Stocks held by 2+ ETFs</div>
+        </div>
+      </div>
+
+      <!-- Allocation -->
+      <div class="section">
+        <div class="section-header"><h2 class="section-title">ETF Allocation</h2></div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="port-allocation-table">
+            <thead><tr><th>Ticker</th><th>Name</th><th class="align-right">Weight</th><th class="align-right">Expense Ratio</th></tr></thead>
+            <tbody>
+              ${alloc.map(a => {
+                const d = ETF_DATABASE[a.ticker];
+                const erVal = d.overview.find(o => o.label === 'Expense Ratio')?.value || '-';
+                return `<tr>
+                  <td><span class="holding-ticker">${a.ticker}</span></td>
+                  <td class="holding-name">${d.name}</td>
+                  <td class="align-right holding-weight">${(a.w * 100).toFixed(1)}%</td>
+                  <td class="align-right">${erVal}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Blended Sector Exposure -->
+      <div class="section">
+        <div class="section-header"><h2 class="section-title">Blended Sector Exposure</h2></div>
+        <div class="card sector-bars-wrap">
+          ${blendedSectors.map(s => {
+            const maxPct = blendedSectors[0].pct;
+            return `
+              <div class="sector-bar-row">
+                <div class="sb-label">${s.name}</div>
+                <div class="sb-track">
+                  <div class="sb-fill" style="width:${(s.pct / maxPct) * 100}%;background:${s.color}"></div>
+                </div>
+                <div class="sb-pct">${s.pct.toFixed(1)}%</div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Blended Performance -->
+      <div class="section">
+        <div class="section-header"><h2 class="section-title">Blended Performance</h2></div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="blended-perf-table">
+            <thead><tr><th>Period</th><th>Blended Return</th></tr></thead>
+            <tbody>
+              ${blendedPerf.map(p => `
+                <tr>
+                  <td>${p.period}</td>
+                  <td class="${p.ret >= 0 ? 'r-pos' : 'r-neg'}">${p.ret >= 0 ? '+' : ''}${p.ret.toFixed(2)}%</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Holdings Overlap -->
+      ${overlapHoldings.length ? `
+      <div class="section">
+        <div class="section-header"><h2 class="section-title">Holdings Overlap</h2><span class="section-meta">Stocks held by 2+ ETFs in your portfolio</span></div>
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="overlap-table">
+            <thead><tr><th>Ticker</th><th>Company</th><th>Found In</th><th class="align-right">Blended Weight</th></tr></thead>
+            <tbody>
+              ${overlapHoldings.map(h => `
+                <tr>
+                  <td><span class="holding-ticker">${h.ticker}</span></td>
+                  <td class="holding-name">${h.name}</td>
+                  <td style="color:var(--accent-amber);font-size:12px;">${h.etfs.join(', ')}</td>
+                  <td class="align-right holding-weight">${h.totalW.toFixed(2)}%</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>` : ''}
+    `;
+
+    portfolioDashboard.innerHTML = html;
+
+    document.getElementById('portBackBtn').addEventListener('click', () => {
+      portfolioDashboard.classList.add('hidden');
+      heroSection.classList.remove('hidden');
+    });
+  }
+
+}());
+
+/* ══════════════════════════════════════════════════════════════════
+   FEATURE 3 – EXPORT (PDF + CSV)
+   ══════════════════════════════════════════════════════════════════ */
+
+(function initExport() {
+
+  /* ── CSV helpers ── */
+  function downloadCSV(filename, rows) {
+    const csv = rows.map(r => r.map(cell => {
+      const s = String(cell ?? '').replace(/"/g, '""');
+      return /[",\n]/.test(s) ? `"${s}"` : s;
+    }).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+  }
+
+  function todayStr() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function getCurrentData() {
+    const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+    return ticker ? ETF_DATABASE[ticker] : null;
+  }
+
+  /* ── PDF (print) ── */
+  document.getElementById('exportPdfBtn').addEventListener('click', () => {
+    const data = getCurrentData();
+    if (!data) return;
+
+    // Insert a temporary print header
+    const hdr = document.createElement('div');
+    hdr.className = 'print-header';
+    hdr.innerHTML = `<strong>ETFLens Research Report</strong> — ${data.ticker}: ${data.name} &nbsp;|&nbsp; Generated ${todayStr()}`;
+    const dashboard = document.getElementById('dashboard');
+    dashboard.insertBefore(hdr, dashboard.firstChild);
+
+    window.print();
+    hdr.remove();
+  });
+
+  /* ── CSV dropdown ── */
+  const csvBtn  = document.getElementById('exportCsvBtn');
+  const csvMenu = document.getElementById('exportDropdownMenu');
+
+  csvBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    csvMenu.classList.toggle('open');
+  });
+
+  document.addEventListener('click', () => csvMenu.classList.remove('open'));
+
+  document.getElementById('exportHoldingsCsv').addEventListener('click', () => {
+    const data = getCurrentData();
+    if (!data) return;
+    csvMenu.classList.remove('open');
+    const rows = [
+      ['Rank', 'Ticker', 'Company', 'Weight (%)'],
+      ...data.holdings.items.map((h, i) => [i + 1, h.ticker, h.name, h.weight.toFixed(2)]),
+    ];
+    downloadCSV(`${data.ticker}_holdings_${todayStr()}.csv`, rows);
+  });
+
+  document.getElementById('exportPerfCsv').addEventListener('click', () => {
+    const data = getCurrentData();
+    if (!data) return;
+    csvMenu.classList.remove('open');
+    const rows = [
+      ['Period', `${data.ticker} Return (%)`, `${data.performance.benchmark} (%)`, 'vs Benchmark (%)'],
+      ...data.performance.periods.map(p => [
+        p.period,
+        p.etf.toFixed(2),
+        p.bmk.toFixed(2),
+        (p.etf - p.bmk).toFixed(2),
+      ]),
+    ];
+    downloadCSV(`${data.ticker}_performance_${todayStr()}.csv`, rows);
+  });
+
+}());
+

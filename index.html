@@ -29,6 +29,10 @@
             spellcheck="false"
           />
           <button type="submit" class="search-btn">Analyze</button>
+          <div class="header-actions">
+            <button type="button" class="action-btn" id="compareToggleBtn" title="Compare 2–3 ETFs side by side">⇄ Compare</button>
+            <button type="button" class="action-btn" id="portfolioToggleBtn" title="Build a multi-ETF portfolio">⊞ Portfolio</button>
+          </div>
         </div>
         <div class="search-chips" id="searchChips">
           <label class="chip chip-load" title="Load a .txt file with one ticker per line">
@@ -53,6 +57,42 @@
       </form>
     </div>
   </header>
+
+  <!-- ─── Compare Panel (hidden by default) ──────────────────────── -->
+  <div class="feature-panel hidden" id="comparePanel">
+    <div class="fp-inner">
+      <div class="fp-header">
+        <span class="fp-title">⇄ ETF Comparison</span>
+        <span class="fp-sub">Enter 2–3 tickers to compare side by side</span>
+        <button class="fp-close" id="compareClose">✕</button>
+      </div>
+      <div class="fp-inputs" id="compareInputs">
+        <div class="cmp-ticker-row">
+          <input type="text" class="cmp-input" placeholder="Ticker 1 (e.g. SPY)" maxlength="10" spellcheck="false" />
+          <input type="text" class="cmp-input" placeholder="Ticker 2 (e.g. QQQ)" maxlength="10" spellcheck="false" />
+          <input type="text" class="cmp-input" placeholder="Ticker 3 (optional)" maxlength="10" spellcheck="false" />
+          <button class="compare-run-btn" id="compareRunBtn">Compare</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Portfolio Panel (hidden by default) ─────────────────────── -->
+  <div class="feature-panel hidden" id="portfolioPanel">
+    <div class="fp-inner">
+      <div class="fp-header">
+        <span class="fp-title">⊞ Portfolio Builder</span>
+        <span class="fp-sub">Allocate weights across ETFs to see blended metrics</span>
+        <button class="fp-close" id="portfolioClose">✕</button>
+      </div>
+      <div id="portfolioRows"></div>
+      <div class="portfolio-controls">
+        <button class="port-add-btn" id="portAddRow">+ Add ETF</button>
+        <div class="port-weight-status" id="portWeightStatus"></div>
+        <button class="port-analyze-btn" id="portAnalyzeBtn">Analyze Portfolio</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ─── Hero / Empty State ──────────────────────────────────────── -->
   <main id="mainContent">
@@ -170,7 +210,26 @@
         <div class="card bottom-line-card" id="bottomLine"></div>
       </section>
 
+      <!-- Export toolbar -->
+      <div class="export-toolbar" id="exportToolbar">
+        <span class="export-label">Export:</span>
+        <button class="export-btn" id="exportPdfBtn">🖨 PDF Report</button>
+        <div class="export-dropdown">
+          <button class="export-btn" id="exportCsvBtn">⬇ CSV ▾</button>
+          <div class="export-dropdown-menu" id="exportDropdownMenu">
+            <button class="export-dropdown-item" id="exportHoldingsCsv">Holdings CSV</button>
+            <button class="export-dropdown-item" id="exportPerfCsv">Performance CSV</button>
+          </div>
+        </div>
+      </div>
+
     </div><!-- /dashboard -->
+
+    <!-- ─── Comparison Dashboard ────────────────────────────────────── -->
+    <div class="compare-dashboard hidden" id="compareDashboard"></div>
+
+    <!-- ─── Portfolio Dashboard ─────────────────────────────────────── -->
+    <div class="portfolio-dashboard hidden" id="portfolioDashboard"></div>
 
     <!-- Loading overlay -->
     <div class="loader-overlay hidden" id="loaderOverlay">
